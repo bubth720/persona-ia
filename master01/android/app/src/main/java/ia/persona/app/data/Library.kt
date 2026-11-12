@@ -81,6 +81,7 @@ class Library(val root: File) {
 
     private fun recoverOrphans() {
         originals.listFiles()?.forEach { dir ->
+            if (dir.isFile) { if (dir.name.startsWith(".tmp-")) dir.delete(); return@forEach }  // copie partielle
             dir.listFiles()?.forEach { f ->
                 if (f.name.startsWith(".tmp-")) { f.delete(); return@forEach }
                 val sha = f.nameWithoutExtension

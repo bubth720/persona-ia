@@ -21,7 +21,7 @@ jobs:
       - name: Previous components (non-regression)
         run: |
           python -m unittest discover -s tests -v 2>&1 | tee -a engine_tests.log
-          python -m unittest discover -s independent/m4_m6/tests -v 2>&1 | tee -a engine_tests.log
+          PYTHONPATH=independent/m4_m6 python -m unittest discover -s independent/m4_m6/tests -v 2>&1 | tee -a engine_tests.log
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: engine-tests-log, path: engine_tests.log }
