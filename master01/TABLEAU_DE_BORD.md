@@ -18,7 +18,7 @@ Date : 2026-11-12 · Branche `ccr-8f135e00-hwmdvs` (partie de `docs/persona-road
 | D — Planche faciale | **BLOQUÉ** (dépend de B) | Pipeline 6 vues + revue + régénération testés avec le backend de test non génératif | Génération réelle puis `REVUE_HUMAINE.md` |
 | E — Planche corporelle | **BLOQUÉ** (dépend de B) | Cartes OpenPose face/profil/¾/dos ; dos marqué « estimé » | Idem ; si le corps n'est pas tenu, essayer un 2e pipeline |
 | F — Assemblage et traçabilité | **PASS** (mécanisme) | Planches PNG + vues + manifeste SHA-256 ; rejet des substitutions (copie exacte et recadrage) ; planche de test classée `layout_test_only` | Revérifier sur de vraies générations |
-| G — Android | **PARTIEL** | APK compilée et signée debug par la CI ; tests JVM 4/4 ; émulateurs API 29 et 35 : 3/3 tests (écrans, 300 imports, parcours complet contre le worker de test) | Parcours réel avec le moteur GPU ; appareils physiques **seulement avec votre accord** |
+| G — Android | **PARTIEL** | APK compilée et signée debug par la CI ; tests JVM 4/4 ; émulateurs API 29 et 35 : 3/3 tests (écrans, 300 imports, parcours complet contre le worker de test, prouvé par la trace du worker — run `43296162862`) | Parcours réel avec le moteur GPU ; appareils physiques **seulement avec votre accord** |
 | H — PERSONA-3D | **PARTIEL** | `AUDIT_PERSONA3D.md` ; 16/16 tests PERSONA-3D ; module 3D isolé, rien intégré dans l'APK photo | Après la V1 photo |
 | I — Vidéo / LIVE | **NON RÉALISÉ** (consigné) | `PHASE_I_VIDEO_LIVE.md` | Après Gate D/E |
 
