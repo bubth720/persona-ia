@@ -1,5 +1,10 @@
 # MASTER 01 — Phase B : moteur de génération
 
+> **Mise à jour du 2026-11-12 — règle « 100 % local, 100 % gratuit ».** Colab est exclu.
+> Le moteur doit tourner sur un PC personnel (NVIDIA) : voir [`SELECTION_MODELES_LOCAUX.md`](SELECTION_MODELES_LOCAUX.md).
+> L'environnement verrouillé (Python 3.11) et le backend PhotoMaker V2 restent valables sur PC ;
+> le moteur force désormais le mode hors ligne (`persona_engine/offline.py`).
+
 ## État : **BLOQUÉ dans cette session**, prêt à exécuter sur GPU
 
 Cette session cloud n'a **ni GPU** (`nvidia-smi` absent ; 4 vCPU, 15 Go RAM) **ni accès à HuggingFace ou aux dépôts GitHub tiers** (réponses réseau 000/403). Aucune image n'a donc été générée ici. Gate B n'est **pas** atteinte : tant qu'aucune image n'existe avec son journal, aucun PASS n'est déclaré.

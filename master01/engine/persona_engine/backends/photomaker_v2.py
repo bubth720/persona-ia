@@ -16,6 +16,9 @@ from pathlib import Path
 
 from ..pose import pose_map, VIEW_YAW
 from .base import Backend, GenerationResult
+from ..offline import enforce_offline
+
+enforce_offline()   # 100 % local : aucun accès réseau pendant la génération (voir offline.py)
 
 BASE_MODEL = os.environ.get("PERSONA_BASE_MODEL", "SG161222/RealVisXL_V4.0")
 PM_REPO, PM_FILE = "TencentARC/PhotoMaker-V2", "photomaker-v2.bin"

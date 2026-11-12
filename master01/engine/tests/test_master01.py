@@ -316,5 +316,28 @@ class PoseMaps(unittest.TestCase):
             self.assertGreater(len(set(im.tobytes())), 5)
 
 
+class OfflinePolicy(unittest.TestCase):
+    def test_offline_enforced_unless_explicit(self):
+        import os
+        from persona_engine import offline
+        saved = {k: os.environ.pop(k, None) for k in offline.OFFLINE_VARS + ("PERSONA_ALLOW_DOWNLOAD",)}
+        try:
+            self.assertTrue(offline.enforce_offline())
+            self.assertTrue(all(os.environ[v] == "1" for v in offline.OFFLINE_VARS))
+            for v in offline.OFFLINE_VARS:
+                os.environ.pop(v)
+            os.environ["PERSONA_ALLOW_DOWNLOAD"] = "1"
+            self.assertFalse(offline.enforce_offline())
+            self.assertNotIn("HF_HUB_OFFLINE", os.environ)
+            os.environ.pop("PERSONA_ALLOW_DOWNLOAD")
+            with self.assertRaises(SystemExit):
+                offline.prefetch()
+        finally:
+            for k, v in saved.items():
+                os.environ.pop(k, None)
+                if v is not None:
+                    os.environ[k] = v
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

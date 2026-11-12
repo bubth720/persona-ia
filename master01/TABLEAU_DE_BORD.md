@@ -4,7 +4,7 @@ Date : 2026-11-12 · Branche `ccr-8f135e00-hwmdvs` (partie de `docs/persona-road
 
 ## Verdict global
 
-**V1 PHOTO : NO-GO pour l'instant.** Aucune image photoréaliste inédite n'a été générée : la session d'exécution n'avait ni GPU ni accès à HuggingFace. Tout ce qui précède et suit la génération est construit et testé ; la génération elle-même attend une exécution du notebook sur un GPU autorisé (Colab T4 ou PC).
+**V1 PHOTO : NO-GO pour l'instant.** Aucune image photoréaliste inédite n'a été générée : la session d'exécution n'avait ni GPU ni accès à HuggingFace. Tout ce qui précède et suit la génération est construit et testé ; la génération elle-même attend un PC personnel avec carte graphique (règle 100 % local : Colab exclu).
 
 **MASTER 01 : non complet.** Ne pas annoncer « terminé ».
 
@@ -13,7 +13,7 @@ Date : 2026-11-12 · Branche `ccr-8f135e00-hwmdvs` (partie de `docs/persona-road
 | Phase | Statut | Preuves | Prochaine action |
 |---|---|---|---|
 | A — Récupération M1–M3.1 | **PARTIEL** (repli) | `INVENTAIRE_RECUPERATION.md` : SHA de toutes les branches, M1–M3.1 introuvables sur GitHub, base minimale reconstruite | Fournir les bundles/ZIP Codex s'ils existent encore |
-| B — Moteur GPU | **BLOQUÉ** (pas de GPU ni de HuggingFace ici) | `MOTEUR_GPU.md` ; lock Python 3.11 résolu ; cause de l'échec Colab identifiée (torch sans roue cp313) ; notebook prêt | Exécuter `engine/colab/PERSONA_MASTER01_GEN.ipynb` sur T4, cellules 1 à 5 |
+| B — Moteur GPU | **BLOQUÉ** (pas de GPU ni de HuggingFace ici) | `MOTEUR_GPU.md`, `SELECTION_MODELES_LOCAUX.md` ; lock Python 3.11 ; mode hors ligne forcé ; Colab exclu (règle 100 % local) | Préciser le PC (carte graphique, VRAM) puis installer et tester sur ce PC |
 | C — Banque de références | **PASS** (sur données synthétiques) | T01 (10/300/1000), T02, T03 en Python ; mêmes garanties en Kotlin (tests JVM + 300 imports sur émulateur) | Vérifier avec un vrai lot de photos sur téléphone |
 | D — Planche faciale | **BLOQUÉ** (dépend de B) | Pipeline 6 vues + revue + régénération testés avec le backend de test non génératif | Génération réelle puis `REVUE_HUMAINE.md` |
 | E — Planche corporelle | **BLOQUÉ** (dépend de B) | Cartes OpenPose face/profil/¾/dos ; dos marqué « estimé » | Idem ; si le corps n'est pas tenu, essayer un 2e pipeline |
@@ -62,4 +62,4 @@ Chaque nouveau commit reconstruit l'APK ; son SHA-256 est dans `apk_sha256.txt` 
 
 ## Dépenses
 
-0 € : session cloud et GitHub Actions (minutes gratuites). Coût GPU à venir : Colab gratuit possible, environ 30 à 60 min de T4 pour la démo.
+0 € : session cloud et GitHub Actions (minutes gratuites). Aucun coût à venir : uniquement des modèles gratuits exécutés sur le PC personnel (électricité exceptée).

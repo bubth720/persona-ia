@@ -13,6 +13,10 @@ Example (Colab, inside the Python 3.11 venv):
 """
 from __future__ import annotations
 
+from .offline import enforce_offline
+
+enforce_offline()   # avant tout import de huggingface_hub / diffusers (lus à l'import)
+
 import argparse
 import json
 import time
