@@ -429,7 +429,7 @@ def serve(root: Path, backend_name: str, host: str = "127.0.0.1", port: int = 87
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description="PERSONA IA engine worker")
     ap.add_argument("--root", default="persona_worker_data")
-    ap.add_argument("--backend", default="photomaker_v2", choices=["photomaker_v2", "test_pattern"])
+    ap.add_argument("--backend", default="photomaker_v2", choices=["photomaker_v2", "sdcpp", "test_pattern"])
     ap.add_argument("--host", default="127.0.0.1",
                     help="0.0.0.0 uniquement sur LAN privé de confiance, jamais exposé publiquement")
     ap.add_argument("--port", type=int, default=8765)

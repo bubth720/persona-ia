@@ -6,6 +6,7 @@ T08 boards + hashes · T09 worker stop mid-job · anti-substitution · HTTP auth
 from __future__ import annotations
 
 import json
+import os
 import random
 import sys
 import tempfile
@@ -314,6 +315,80 @@ class PoseMaps(unittest.TestCase):
             im = pose_map(v)
             self.assertEqual(im.size, (768, 1344))
             self.assertGreater(len(set(im.tobytes())), 5)
+
+
+FAKE_SDCLI = """#!/usr/bin/env python3
+import sys, json, os
+from PIL import Image
+a = sys.argv[1:]
+out = a[a.index("-o") + 1]
+if "--pm-id-images-dir" in a:
+    d = a[a.index("--pm-id-images-dir") + 1]
+    n = len([f for f in os.listdir(d) if f.endswith((".png", ".jpg"))])
+    assert n >= 1, "no id images"
+if os.environ.get("FAKE_FAIL"):
+    print("boom"); sys.exit(3)
+w, h = int(a[a.index("-W") + 1]), int(a[a.index("-H") + 1])
+Image.effect_noise((w, h), 60).convert("RGB").save(out)
+open(out + ".args.json", "w").write(json.dumps(a))
+"""
+
+
+class SdCppBackendTest(unittest.TestCase):
+    def setUp(self):
+        self.d = Path(tempfile.mkdtemp())
+        self.bin = self.d / "sd-cli"
+        self.bin.write_text(FAKE_SDCLI.replace("/usr/bin/env python3", sys.executable))
+        self.bin.chmod(0o755)
+        for f in ("model.gguf", "pm.safetensors"):
+            (self.d / f).write_bytes(b"x")
+
+    def backend(self):
+        from persona_engine.backends.sdcpp import SdCppBackend
+        return SdCppBackend(binary=str(self.bin), model=str(self.d / "model.gguf"),
+                            photomaker=str(self.d / "pm.safetensors"), threads=2)
+
+    def test_missing_files_refused(self):
+        from persona_engine.backends.sdcpp import SdCppBackend
+        with self.assertRaises(FileNotFoundError):
+            SdCppBackend(binary=str(self.bin), model=str(self.d / "absent.gguf"), photomaker=str(self.d / "pm.safetensors"))
+
+    def test_face_and_body_jobs_through_worker(self):
+        refs = synth_images(self.d / "r", 2, size=(256, 256))
+        mgr = JobManager(self.d / "w", self.backend())
+        try:
+            for kind, n in (("face", 6), ("body", 4)):
+                job = _job_with_refs(mgr, kind, refs)
+                mgr.start(job["id"])
+                job = mgr.wait(job["id"], timeout=60)
+                self.assertEqual(job["state"], "succeeded", job["events"][-3:])
+                m = mgr.manifest(job["id"])
+                self.assertEqual(m["status"], "candidate_for_human_review")   # vraie génération (moteur simulé ici)
+                self.assertEqual(len(m["views"]), n)
+                v0 = next(iter(job["views"].values()))
+                args = json.loads(Path(str(mgr._jdir(job["id"]) / "out" / f"{next(iter(job['views']))}.png") + ".args.json").read_text())
+                self.assertIn("--photo-maker", args)
+                self.assertIn(" img,", args[args.index("-p") + 1])
+                self.assertIn("RAM pic", v0["provenance"]["hardware"])
+                if kind == "body":
+                    self.assertTrue(any("pose" in w for w in v0["provenance"]["warnings"]))
+        finally:
+            mgr.shutdown()
+
+    def test_synthetic_reference_without_photomaker_and_failure(self):
+        b = self.backend()
+        r = b.generate(kind="face", view="face", references=[], seed=1, params={}, out_path=self.d / "s.png",
+                       use_photomaker=False)
+        args = json.loads((self.d / "s.png.args.json").read_text())
+        self.assertNotIn("--photo-maker", args)
+        self.assertIn("fictitious", r.prompt)
+        os.environ["FAKE_FAIL"] = "1"
+        try:
+            with self.assertRaises(RuntimeError):
+                b.generate(kind="face", view="face", references=[self.d / "s.png"], seed=1, params={},
+                           out_path=self.d / "f.png")
+        finally:
+            os.environ.pop("FAKE_FAIL")
 
 
 class OfflinePolicy(unittest.TestCase):

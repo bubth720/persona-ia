@@ -1,0 +1,94 @@
+name: MASTER01 - POCO local engine (stable-diffusion.cpp)
+on:
+  workflow_dispatch:
+  push:
+    branches: [ccr-8f135e00-hwmdvs]
+    paths: ['master01/poco/**', 'master01/engine/persona_engine/**', '.github/workflows/master01-poco.yml']
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+env:
+  SDCPP_COMMIT: e239e4b0fd3de49834cec67031a44796ca465abc
+jobs:
+  android-arm64:
+    name: sd-cli arm64 for POCO (Termux)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch stable-diffusion.cpp at pinned commit
+        run: |
+          git clone -q https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cd sdcpp && git checkout -q "$SDCPP_COMMIT"
+          git submodule update -q --init ggml thirdparty/libwebp thirdparty/libwebm examples/server/frontend
+      - name: Build (NDK, static, two CPU variants)
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          for v in generic:armv8-a dotprod:armv8.2-a+dotprod+fp16; do
+            name=${v%%:*}; arch=${v#*:}
+            cmake -S sdcpp -B build-$name -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+              -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_static \
+              -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DGGML_CPU_ARM_ARCH=$arch -DSD_WEBP=OFF -DSD_WEBM=OFF
+            cmake --build build-$name --target sd-cli -j4
+            mkdir -p out && cp build-$name/bin/sd-cli out/sd-cli-arm64-$name
+          done
+          file out/*; cd out && sha256sum sd-cli-* | tee SHA256SUMS.txt
+          echo "stable-diffusion.cpp $SDCPP_COMMIT (MIT)" > VERSION.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: poco-sd-cli-arm64, path: out/ }
+
+  cpu-render-proof:
+    name: Real render on CPU (fictitious person, same engine as POCO)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Free disk
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL; df -h /
+      - name: Build sd-cli (x86_64 CPU, same commit)
+        run: |
+          git clone -q https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cd sdcpp && git checkout -q "$SDCPP_COMMIT"
+          git submodule update -q --init ggml thirdparty/libwebp thirdparty/libwebm examples/server/frontend
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSD_WEBM=OFF
+          cmake --build build --target sd-cli -j4
+          echo "SDCLI=$PWD/build/bin/sd-cli" >> $GITHUB_ENV
+      - name: Download weights once (installation step)
+        run: |
+          pip install -q huggingface_hub==0.26.5 Pillow==10.4.0
+          python master01/poco/fetch_models.py /tmp/models | tee models.log
+      - name: Quantize SDXL to q8_0 (format used on the phone)
+        run: |
+          SRC=$(python -c "import json;print(json.load(open('/tmp/models/models.lock.json'))['sdxl']['local_path'])")
+          /usr/bin/time -v $SDCLI -M convert -m "$SRC" -o /tmp/models/sdxl_q8_0.gguf --type q8_0 2> convert_time.txt | tail -3
+          grep -E "Elapsed|Maximum resident" convert_time.txt; ls -la /tmp/models/sdxl_q8_0.gguf
+          sha256sum /tmp/models/sdxl_q8_0.gguf | tee -a models.log
+          rm -f "$SRC"; df -h /
+      - name: Generate face + body boards, NO network (fictitious person)
+        env:
+          PERSONA_SDCPP_BIN: ${{ env.SDCLI }}
+          PERSONA_SDCPP_MODEL: /tmp/models/sdxl_q8_0.gguf
+          PERSONA_SDCPP_VAE: /tmp/models/vae/sdxl_vae.safetensors
+          PERSONA_SDCPP_PM: /tmp/models/photomaker/photomaker-v1.safetensors
+        run: |
+          cd master01/engine
+          # unshare -n : la génération tourne SANS accès réseau (preuve du 100 % local)
+          sudo -E unshare -n -- sudo -E -u "$USER" env PATH="$PATH" PYTHONPATH=. \
+            python -m persona_engine.run_boards --backend sdcpp --demo-synthetic --subject woman --out /tmp/render 2>&1 | tee ../../render.log
+      - name: Preview in log + collect
+        if: always()
+        run: |
+          mkdir -p proof && cp render.log models.log convert_time.txt proof/ 2>/dev/null || true
+          cp /tmp/models/models.lock.json proof/ 2>/dev/null || true
+          cp /tmp/render/run_summary.json proof/ 2>/dev/null || true
+          cp -r /tmp/render/synthetic_refs proof/ 2>/dev/null || true
+          for b in /tmp/render/worker/jobs/*/board; do cp -r "$b" "proof/board_$(basename $(dirname $b))"; done 2>/dev/null || true
+          find /tmp/render/worker/jobs -name '*.log' -exec cp {} proof/ \; 2>/dev/null || true
+          python master01/poco/preview.py proof/board_*/planche_*.png || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: poco-engine-cpu-render-proof, path: proof/ }

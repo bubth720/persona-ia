@@ -50,6 +50,18 @@ def make_synthetic_person(out_dir: Path, seed: int, subject: str) -> list[Path]:
     return paths
 
 
+def make_synthetic_person_sdcpp(backend, out_dir: Path, seed: int, subject: str) -> list[Path]:
+    """Personne fictive générée sans référence par sd.cpp (aucune donnée personnelle)."""
+    paths = []
+    for i, view in enumerate(["face", "trois_quarts_gauche", "expression"]):
+        p = out_dir / f"synthetic_ref_{i}.png"
+        backend.generate(kind="face", view=view, references=[], seed=seed + 100 + i,
+                         params={"subject_class": subject, "appearance": "short brown hair"}, out_path=p,
+                         use_photomaker=False)
+        paths.append(p)
+    return paths
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -57,16 +69,22 @@ def main(argv=None) -> None:
     g.add_argument("--demo-synthetic", action="store_true")
     g.add_argument("--refs")
     ap.add_argument("--consent", default="")
-    ap.add_argument("--subject", default="person", help="man / woman / person")
+    ap.add_argument("--subject", default="woman", help="man / woman (sd.cpp : man, woman, girl, boy)")
     ap.add_argument("--appearance", default="plain fitted grey t-shirt, dark jeans, white sneakers")
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--kinds", default="face,body")
-    ap.add_argument("--steps", type=int, default=40)
+    ap.add_argument("--steps", type=int, default=None)
+    ap.add_argument("--backend", default="photomaker_v2", choices=["photomaker_v2", "sdcpp"])
     a = ap.parse_args(argv)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
+    if a.backend == "sdcpp":
+        backend = get_backend("sdcpp", **({"steps": a.steps} if a.steps else {}))
+    else:
+        backend = get_backend("photomaker_v2", **({"steps": a.steps} if a.steps else {}))
     if a.demo_synthetic:
-        refs = make_synthetic_person(out / "synthetic_refs", a.seed, a.subject)
+        refs = (make_synthetic_person_sdcpp(backend, out / "synthetic_refs", a.seed, a.subject)
+                if a.backend == "sdcpp" else make_synthetic_person(out / "synthetic_refs", a.seed, a.subject))
         consent = "personne fictive générée (mode démonstration, aucune donnée personnelle)"
     else:
         if not a.consent.strip():
@@ -77,7 +95,6 @@ def main(argv=None) -> None:
                           bank.import_paths(files, authorized=True, consent_note=a.consent).items()}))
         refs = bank.select_for_engine(list(bank.records), remote=False, remote_consent=False)
         consent = a.consent
-    backend = get_backend("photomaker_v2", steps=a.steps)
     mgr = JobManager(out / "worker", backend)
     summary = {"mode": "demo_synthetic" if a.demo_synthetic else "authorised_references", "consent": consent,
                "references_sha256": [sha256_file(p) for p in refs], "jobs": {}}
@@ -94,7 +111,8 @@ def main(argv=None) -> None:
                                      "board_dir": str(out / "worker" / "jobs" / job["id"] / "board"),
                                      "views": {v: {"state": s["state"], "error": s.get("error"),
                                                    "duration_s": (s.get("provenance") or {}).get("duration_s"),
-                                                   "peak_vram_mb": (s.get("provenance") or {}).get("peak_vram_mb")}
+                                                   "peak_vram_mb": (s.get("provenance") or {}).get("peak_vram_mb"),
+                                                   "hardware": (s.get("provenance") or {}).get("hardware")}
                                                for v, s in job["views"].items()}}
             print(json.dumps(summary["jobs"][kind], indent=2, ensure_ascii=False), flush=True)
     finally:
