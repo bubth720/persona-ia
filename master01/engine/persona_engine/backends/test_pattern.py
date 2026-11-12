@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw
 
 from ..contract import VIEW_LABELS
 from ..pose import pose_map, VIEW_YAW
+from ..boards import _font
 from .base import Backend, GenerationResult
 
 
@@ -41,8 +42,8 @@ class TestPatternBackend(Backend):
         for i in range(0, w + h, 24):
             d.line([(i, 0), (0, i)], fill=(70, 70, 70), width=1)
         d.rectangle([0, h // 2 - 28, w, h // 2 + 28], fill=(200, 0, 0))
-        d.text((10, h // 2 - 20), "TEST — PAS UNE GÉNÉRATION", fill=(255, 255, 255))
-        d.text((10, h // 2 + 2), f"{VIEW_LABELS.get(view, view)} · seed {seed}", fill=(255, 255, 255))
+        d.text((10, h // 2 - 22), "TEST — PAS UNE GÉNÉRATION", fill=(255, 255, 255), font=_font(22))
+        d.text((10, h // 2 + 2), f"{VIEW_LABELS.get(view, view)} · seed {seed}", fill=(255, 255, 255), font=_font(16))
         out_path.parent.mkdir(parents=True, exist_ok=True)
         img.save(out_path, "PNG")
         return GenerationResult(path=out_path, engine=self.name, model="none", model_version="0",

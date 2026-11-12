@@ -17,6 +17,7 @@ import ia.persona.app.ui.SettingsActivity
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.ByteArrayInputStream
@@ -60,8 +61,10 @@ class EndToEndTest {
 
     @Test fun fullJourneyAgainstWorker() {
         val args = InstrumentationRegistry.getArguments()
-        val url = args.getString("engineUrl") ?: return        // pas de moteur fourni : test ignoré
-        val token = args.getString("engineToken") ?: return
+        val url = args.getString("engineUrl")
+        val token = args.getString("engineToken")
+        assumeTrue("aucun moteur fourni : test ignoré (visible comme SKIPPED)", url != null && token != null)
+        url!!; token!!
         val e = EngineClient(url, token)
         assertTrue(e.health().getBoolean("ok"))
         val lib = Library(File(ctx.cacheDir, "lib-e2e-${System.nanoTime()}"))

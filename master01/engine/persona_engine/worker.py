@@ -62,6 +62,9 @@ class JobManager:
 
     def save(self, job: dict) -> None:
         job["updated_at"] = now_iso()
+        if job.get("_last_logged") != job["state"]:
+            job["_last_logged"] = job["state"]
+            print(f"{job['updated_at']} job {job['id'][:8]} {job['kind']} -> {job['state']}", flush=True)
         atomic_write_json(self._jdir(job["id"]) / "job.json", job)
 
     def _recover(self) -> None:

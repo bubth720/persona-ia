@@ -100,6 +100,9 @@ jobs:
             chmod +x gradlew
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.engineUrl=http://10.0.2.2:8765 -Pandroid.testInstrumentationRunnerArguments.engineToken=ci-test-token-not-secret > emulator_tests.log 2>&1; s=$?; tail -80 emulator_tests.log; exit $s
             adb shell dumpsys meminfo ia.persona.app | head -30 > meminfo.txt || true
+      - name: Worker trace (proof the end-to-end journey reached the engine)
+        if: always()
+        run: cat /tmp/worker.log; grep -q "face -> succeeded" /tmp/worker.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
