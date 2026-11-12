@@ -55,7 +55,7 @@ Chaque nouveau commit reconstruit l'APK ; son SHA-256 est dans `apk_sha256.txt` 
 ## Anomalies et limites
 
 * Aucun moteur local sur téléphone : la génération dépend d'un PC ou d'un GPU distant, ce qui est affiché dans l'app.
-* La liaison Android ↔ Colab n'est pas activée par défaut (pas de tunnel public). Pour le parcours Android complet, lancer le worker sur un PC du réseau local, ou ouvrir vous-même un tunnel privé authentifié.
+* Le téléphone pilote le moteur du PC via le Wi-Fi domestique (aucun passage par Internet, aucun tunnel).
 * Les modèles InsightFace utilisés par PhotoMaker V2 sont réservés à un usage non commercial.
 * Le classement des vues est manuel ; aucune reconnaissance automatique n'est revendiquée.
 * Le stockage privé Android s'appuie sur le chiffrement de fichiers du système ; pas de chiffrement applicatif supplémentaire.
