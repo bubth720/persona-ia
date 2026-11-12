@@ -1,0 +1,16 @@
+torch==2.3.1
+torchvision==0.18.1
+diffusers==0.29.1
+transformers==4.41.2
+huggingface-hub==0.23.4
+accelerate==0.31.0
+safetensors==0.4.3
+peft==0.11.1
+omegaconf==2.3.0
+insightface==0.7.3
+onnxruntime-gpu==1.18.1
+opencv-python-headless==4.10.0.84
+numpy==1.26.4
+Pillow==10.4.0
+einops==0.8.0
+controlnet-aux==0.0.9

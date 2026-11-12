@@ -1,0 +1,12 @@
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+engine/**/__pycache__/
+# Jamais de photographies privées, poids ou jetons dans le dépôt
+*.bin
+*.safetensors
+*.ckpt
+worker_token.txt
+persona_out/
+persona_worker_data/

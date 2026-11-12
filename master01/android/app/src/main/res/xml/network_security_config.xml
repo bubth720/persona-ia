@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTP clair autorisé au niveau système pour joindre un moteur sur réseau local privé ;
+     EngineClient refuse toute URL http:// dont l'hôte n'est pas une adresse privée/locale. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

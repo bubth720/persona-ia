@@ -1,0 +1,112 @@
+name: MASTER01 - engine tests, Android APK, emulators
+on:
+  workflow_dispatch:
+  push:
+    branches: [ccr-8f135e00-hwmdvs]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  engine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install Pillow==10.4.0
+      - name: MASTER01 engine tests (T01 T02 T03 T07 T08 T09, contract)
+        run: cd master01/engine && python -m unittest -v tests.test_master01 2>&1 | tee ../../engine_tests.log
+      - name: Previous components (non-regression)
+        run: |
+          python -m unittest discover -s tests -v 2>&1 | tee -a engine_tests.log
+          python -m unittest discover -s independent/m4_m6/tests -v 2>&1 | tee -a engine_tests.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: engine-tests-log, path: engine_tests.log }
+
+  apk:
+    runs-on: ubuntu-24.04
+    defaults: { run: { working-directory: master01/android, shell: bash } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build debug APK + JVM unit tests
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug testDebugUnitTest 2>&1 | tee gradle_build.log
+      - name: Verify APK and record SHA-256
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK" | tee apk_verify.log
+          "$BT/aapt" dump badging "$APK" | head -5 | tee apk_manifest.log
+          sha256sum "$APK" | tee apk_sha256.txt
+          echo "commit $GITHUB_SHA" >> apk_sha256.txt
+          ./gradlew --no-daemon -q :app:dependencies --configuration debugRuntimeClasspath > dependencies.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: persona-ia-master01-debug-apk
+          path: |
+            master01/android/app/build/outputs/apk/debug/app-debug.apk
+            master01/android/gradle_build.log
+            master01/android/apk_verify.log
+            master01/android/apk_manifest.log
+            master01/android/apk_sha256.txt
+            master01/android/dependencies.txt
+            master01/android/app/build/reports/tests/
+          if-no-files-found: warn
+
+  emulator:
+    needs: apk
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Start NON-generative test worker on host (no GPU in CI)
+        run: |
+          pip install Pillow==10.4.0
+          cd master01/engine
+          nohup python -m persona_engine.worker --backend test_pattern --host 0.0.0.0 --port 8765 \
+            --token ci-test-token-not-secret --root /tmp/worker > /tmp/worker.log 2>&1 &
+          sleep 2; curl -sf -H "Authorization: Bearer ci-test-token-not-secret" http://127.0.0.1:8765/v1/health
+      - name: Instrumented tests on emulator API ${{ matrix.api }}
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: ${{ matrix.api == 35 && 'google_apis' || 'default' }}
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
+          working-directory: master01/android
+          script: |
+            chmod +x gradlew
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.engineUrl=http://10.0.2.2:8765 -Pandroid.testInstrumentationRunnerArguments.engineToken=ci-test-token-not-secret > emulator_tests.log 2>&1; s=$?; tail -80 emulator_tests.log; exit $s
+            adb shell dumpsys meminfo ia.persona.app | head -30 > meminfo.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-api${{ matrix.api }}-reports
+          path: |
+            master01/android/emulator_tests.log
+            master01/android/meminfo.txt
+            master01/android/app/build/reports/androidTests/
+            /tmp/worker.log
+          if-no-files-found: warn
