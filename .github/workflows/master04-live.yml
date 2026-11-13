@@ -81,7 +81,7 @@ jobs:
           godot --headless --path . --export-release "Linux" build/linux/PERSONA_LIVE.x86_64 2>&1 | tee ../../export_linux.log
           for d in build/windows build/linux; do mkdir -p $d/characters; cp ../../dl/out/demo/persona_demo.glb ../../dl/out/demo/persona_demo.fbx ../../dl/out/demo/persona_demo.json $d/characters/; cp ../README_LIVE.md $d/ 2>/dev/null || true; done
           ls -laR build/windows build/linux; test -s build/windows/PERSONA_LIVE.exe
-          find build -type f -exec sha256sum {} ; | tee ../../live_sha256.txt
+          find build -type f -exec sha256sum {} \; | tee ../../live_sha256.txt
       - name: Exported Linux binary runs the selftest
         run: |
           set +e
