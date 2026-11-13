@@ -1,6 +1,5 @@
 package ia.persona.app
 
-import com.sun.net.httpserver.HttpServer
 import ia.persona.app.engine.LocalEngine
 import ia.persona.app.engine.LogParser
 import ia.persona.app.engine.ModelStore
@@ -11,7 +10,7 @@ import org.junit.Assert.fail
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.nio.file.Files
 import java.security.MessageDigest
 import kotlin.concurrent.thread
@@ -95,21 +94,30 @@ echo "[INFO ] save result image 0 to '${'$'}out'"
 
     @Test fun downloadResumeVerifyAndCorruption() {
         val data = ByteArray(3_000_000) { (it * 31).toByte() }
-        var failFirst = true
-        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/") { ex ->
-            val range = ex.requestHeaders.getFirst("Range")
-            val start = range?.removePrefix("bytes=")?.removeSuffix("-")?.toInt() ?: 0
-            val body = data.copyOfRange(start, data.size)
-            ex.sendResponseHeaders(if (start > 0) 206 else 200, body.size.toLong())
-            ex.responseBody.use { out ->
-                if (failFirst) { failFirst = false; out.write(body, 0, 1_000_000); out.flush(); ex.close(); return@createContext }
-                out.write(body)
+        // Mini serveur HTTP (ServerSocket) : 1re réponse coupée après 1 Mo, 2e réponse en reprise (206).
+        val server = ServerSocket(0)
+        thread(isDaemon = true) {
+            var first = true
+            while (!server.isClosed) {
+                val sock = runCatching { server.accept() }.getOrNull() ?: break
+                sock.use { c ->
+                    val reader = c.getInputStream().bufferedReader()
+                    var start = 0
+                    while (true) {
+                        val l = reader.readLine() ?: break
+                        if (l.isEmpty()) break
+                        if (l.startsWith("Range:", true)) start = l.substringAfter("bytes=").substringBefore("-").trim().toInt()
+                    }
+                    val body = data.copyOfRange(start, data.size)
+                    val status = if (start > 0) "206 Partial Content" else "200 OK"
+                    val out = c.getOutputStream()
+                    out.write("HTTP/1.1 $status\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+                    if (first) { first = false; out.write(body, 0, 1_000_000); out.flush() } else { out.write(body); out.flush() }
+                }
             }
         }
-        server.start()
         try {
-            val port = server.address.port
+            val port = server.localPort
             val spec = ModelStore.Spec("t", "x", "rev", "f.bin", data.size.toLong(), sha(data), "MIT")
             val d = tmp()
             val store = ModelStore(d, listOf(spec))
@@ -121,6 +129,6 @@ echo "[INFO ] save result image 0 to '${'$'}out'"
             // fichier corrompu à l'import : refusé
             try { store.import(spec, ByteArrayInputStream(data.copyOf().also { it[5] = 0 })) { _, _ -> }; fail() }
             catch (_: ModelStore.StoreException) { }
-        } finally { server.stop(0) }
+        } finally { server.close() }
     }
 }

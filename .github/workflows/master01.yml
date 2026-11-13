@@ -36,7 +36,7 @@ jobs:
         id: cache
         with:
           path: jniLibs
-          key: sdcli-jni-${{ env.SDCPP_COMMIT }}-v1
+          key: sdcli-jni-${{ env.SDCPP_COMMIT }}-v2-stripped
       - name: Build sd-cli for arm64 (dotprod + generic) and x86_64 (emulators)
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
@@ -51,7 +51,8 @@ jobs:
               -DANDROID_ABI=$2 -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_static \
               -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DSD_WEBP=OFF -DSD_WEBM=OFF $3
             cmake --build b-$1 --target sd-cli -j4
-            mkdir -p jniLibs/$2 && cp b-$1/bin/sd-cli jniLibs/$2/$4
+            mkdir -p jniLibs/$2
+            "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" --strip-all -o jniLibs/$2/$4 b-$1/bin/sd-cli
           }
           build arm-fast arm64-v8a "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16" libsdcli.so
           build arm-generic arm64-v8a "-DGGML_CPU_ARM_ARCH=armv8-a" libsdcli_generic.so
