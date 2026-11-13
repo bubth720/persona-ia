@@ -1,4 +1,4 @@
-<#
+﻿<#
   PERSONA — installation PC Windows (gratuite, locale).
   Lancer depuis le dossier du paquet PERSONA_PC :
       powershell -ExecutionPolicy Bypass -File install\Installer-PERSONA.ps1           (installation)
