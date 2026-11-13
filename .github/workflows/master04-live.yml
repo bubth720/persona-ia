@@ -259,3 +259,63 @@ jobs:
           Stop-Process $p.Id
       - uses: actions/upload-artifact@v4
         with: { name: PERSONA_PC-windows-package, path: pkg/ }
+
+  windows-generation:
+    name: Phase 1 on Windows - one real image with sd-cli.exe + PhotoMaker (fictive refs)
+    needs: windows-package
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - uses: actions/download-artifact@v4
+        with: { name: PERSONA_PC-windows-package, path: pkg }
+      - uses: actions/download-artifact@v4
+        with: { name: poco-engine-cpu-render-proof, run-id: 43300222986, github-token: "${{ secrets.GITHUB_TOKEN }}", path: proof }
+      - name: Fictive references + models (one-time download, verified hashes)
+        run: |
+          mkdir -p refs && cp proof/synthetic_refs/*.png refs/ && ls refs
+          pip install -q Pillow==10.4.0 psutil==6.0.0 huggingface_hub==0.26.5
+          python pkg/engine/fetch_models.py C:/m
+          SRC=$(python -c "import json;print(json.load(open('C:/m/models.lock.json'))['sdxl']['local_path'])")
+          pkg/engine/bin/sd-cli.exe -M convert -m "$SRC" -o C:/m/sdxl_q8_0.gguf --type q8_0 | tail -2
+      - name: Generate one new portrait (512 px, 5 steps) and record provenance
+        env:
+          PYTHONPATH: ${{ github.workspace }}/pkg/engine
+          PERSONA_SDCPP_BIN: ${{ github.workspace }}/pkg/engine/bin/sd-cli.exe
+          PERSONA_SDCPP_MODEL: C:/m/sdxl_q8_0.gguf
+          PERSONA_SDCPP_VAE: C:/m/vae/sdxl_vae.safetensors
+          PERSONA_SDCPP_PM: C:/m/photomaker/photomaker-v1.safetensors
+        run: |
+          python - <<'PY'
+          import json, glob
+          from dataclasses import asdict
+          from pathlib import Path
+          from persona_engine.backends.sdcpp import SdCppBackend
+          from persona_engine.util import sha256_file
+          refs = sorted(Path("refs").glob("*.png"))
+          b = SdCppBackend()
+          r = b.generate(kind="face", view="trois_quarts_gauche", references=refs, seed=2026,
+                         params={"subject_class": "woman", "width": 512, "height": 512, "steps": 5}, out_path=Path("windows_generated.png"))
+          d = asdict(r); d["path"] = str(d["path"]); d["sha256"] = sha256_file(Path("windows_generated.png"))
+          d["references_sha256"] = [sha256_file(p) for p in refs]
+          d["new_image_not_a_reference"] = d["sha256"] not in d["references_sha256"]
+          Path("windows_generated.json").write_text(json.dumps(d, indent=2, ensure_ascii=False))
+          print(json.dumps({k: d[k] for k in ("duration_s", "hardware", "seed", "sha256", "new_image_not_a_reference")}, ensure_ascii=False))
+          PY
+      - name: Preview
+        run: |
+          python - <<'PY'
+          import base64, io
+          from PIL import Image
+          im = Image.open("windows_generated.png"); im.thumbnail((384, 384))
+          b = io.BytesIO(); im.convert("RGB").save(b, "JPEG", quality=70)
+          s = base64.b64encode(b.getvalue()).decode()
+          print("PREVIEW-BEGIN win")
+          for k in range(0, len(s), 3000):
+              print("PREVIEW " + s[k:k + 3000])
+          print("PREVIEW-END")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: persona-windows-generation, path: "windows_generated.*" }
