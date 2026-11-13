@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: { name: persona-demo-character, path: dl }
-      - run: cp dl/out/demo/persona_demo.glb master04/live/characters/demo/ && ls -la master04/live/characters/demo
+      - run: mkdir -p master04/live/characters/demo && cp dl/out/demo/persona_demo.glb master04/live/characters/demo/ && ls -la master04/live/characters/demo
       - name: Install Godot 4.3 + export templates
         run: |
           curl -sSL https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip -o g.zip
