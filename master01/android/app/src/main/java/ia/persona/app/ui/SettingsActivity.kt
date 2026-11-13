@@ -68,7 +68,7 @@ class SettingsActivity : Activity() {
                 .setPositiveButton("Effacer") { _, _ -> lib.wipe(); recreate() }
                 .setNegativeButton("Annuler", null).show()
         }
-        col.label("Version 1.0.0-master01 · minSdk 29 · génération hors ligne non disponible (aucun moteur local qualifié).", 12f)
+        col.label("Version 2.0.0-master02 · minSdk 29 · génération locale : écran « Modèle local ».", 12f)
     }
 
     override fun onDestroy() { io.shutdown(); super.onDestroy() }

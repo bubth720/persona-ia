@@ -27,11 +27,15 @@ class MainActivity : Activity() {
         engineInfo = col.label("", 14f)
         col.button("Importer des photos") { startActivity(Intent(this, ReferencesActivity::class.java).putExtra("import", true)) }
         col.button("Références et couverture") { startActivity(Intent(this, ReferencesActivity::class.java)) }
-        col.button("Générer une planche") { startActivity(Intent(this, GenerateActivity::class.java)) }
-        col.button("Résultats / galerie") { startActivity(Intent(this, ResultsActivity::class.java)) }
+        col.button("Générer sur le téléphone (local)") { startActivity(Intent(this, LocalGenerateActivity::class.java)) }
+        col.button("Historique des générations") { startActivity(Intent(this, HistoryActivity::class.java)) }
+        col.button("Modèle local (installation unique)") { startActivity(Intent(this, ModelActivity::class.java)) }
+        col.label("Mode PC (futur)", 14f, bold = true)
+        col.button("Planche via un moteur PC du réseau local") { startActivity(Intent(this, GenerateActivity::class.java)) }
+        col.button("Résultats du moteur PC") { startActivity(Intent(this, ResultsActivity::class.java)) }
         col.button("Réglages et confidentialité") { startActivity(Intent(this, SettingsActivity::class.java)) }
-        col.label("La bibliothèque fonctionne hors ligne. La génération photoréaliste exige un moteur GPU " +
-            "(PC local ou GPU distant autorisé) : elle n'est pas exécutée sur le téléphone.", 13f)
+        col.label("Tout fonctionne hors ligne une fois le modèle installé : la génération tourne sur le processeur " +
+            "du téléphone (plusieurs minutes par image). Le mode PC est optionnel.", 13f)
     }
 
     override fun onResume() {
@@ -40,8 +44,9 @@ class MainActivity : Activity() {
         val refs = lib.all()
         status.text = "${refs.size} références · ${refs.count { it.validated }} classées · ${App.jobs(this).size} générations"
         val url = App.prefs(this).getString("engine_url", "") ?: ""
-        engineInfo.text = if (url.isBlank()) "Moteur : aucun — génération indisponible (bibliothèque seule)."
-        else "Moteur : $url — dépendance à un calcul hors téléphone."
-        engineInfo.setTextColor(if (url.isBlank()) Color.rgb(160, 60, 0) else Color.DKGRAY)
+        val ready = ia.persona.app.engine.LocalJobs.store(this).ready()
+        engineInfo.text = (if (ready) "Moteur local : prêt (hors ligne)." else "Moteur local : modèle à installer (Modèle local).") +
+            (if (url.isBlank()) "" else "\nMoteur PC configuré : $url")
+        engineInfo.setTextColor(if (ready) Color.rgb(0, 110, 0) else Color.rgb(160, 60, 0))
     }
 }

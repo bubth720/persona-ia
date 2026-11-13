@@ -10,3 +10,4 @@ engine/**/__pycache__/
 worker_token.txt
 persona_out/
 persona_worker_data/
+android/app/src/main/jniLibs/

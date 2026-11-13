@@ -26,7 +26,42 @@ jobs:
         if: always()
         with: { name: engine-tests-log, path: engine_tests.log }
 
+  native:
+    name: Native engine libsdcli.so (stable-diffusion.cpp pinned)
+    runs-on: ubuntu-24.04
+    env:
+      SDCPP_COMMIT: e239e4b0fd3de49834cec67031a44796ca465abc
+    steps:
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: jniLibs
+          key: sdcli-jni-${{ env.SDCPP_COMMIT }}-v1
+      - name: Build sd-cli for arm64 (dotprod + generic) and x86_64 (emulators)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone -q https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cd sdcpp && git checkout -q "$SDCPP_COMMIT"
+          git submodule update -q --init ggml thirdparty/libwebp thirdparty/libwebm examples/server/frontend
+          cd ..
+          NDK="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}"
+          build() { # name abi extra-flags out
+            cmake -S sdcpp -B b-$1 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
+              -DANDROID_ABI=$2 -DANDROID_PLATFORM=android-28 -DANDROID_STL=c++_static \
+              -DGGML_OPENMP=OFF -DGGML_NATIVE=OFF -DSD_WEBP=OFF -DSD_WEBM=OFF $3
+            cmake --build b-$1 --target sd-cli -j4
+            mkdir -p jniLibs/$2 && cp b-$1/bin/sd-cli jniLibs/$2/$4
+          }
+          build arm-fast arm64-v8a "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16" libsdcli.so
+          build arm-generic arm64-v8a "-DGGML_CPU_ARM_ARCH=armv8-a" libsdcli_generic.so
+          build x86 x86_64 "" libsdcli.so
+      - run: find jniLibs -type f -exec sha256sum {} \; | tee jniLibs/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with: { name: native-jnilibs, path: jniLibs/ }
+
   apk:
+    needs: native
     runs-on: ubuntu-24.04
     defaults: { run: { working-directory: master01/android, shell: bash } }
     steps:
@@ -34,6 +69,9 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with: { name: native-jnilibs, path: master01/android/app/src/main/jniLibs }
+      - run: rm -f master01/android/app/src/main/jniLibs/SHA256SUMS.txt; find master01/android/app/src/main/jniLibs -type f | xargs ls -la
       - name: Build debug APK + JVM unit tests
         run: |
           chmod +x gradlew
@@ -44,6 +82,8 @@ jobs:
           BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs "$APK" | tee apk_verify.log
           "$BT/aapt" dump badging "$APK" | head -5 | tee apk_manifest.log
+          unzip -l "$APK" | grep -E "lib/.*libsdcli" | tee -a apk_manifest.log
+          "$BT/aapt" dump badging "$APK" | grep -E "native-code" | tee -a apk_manifest.log
           sha256sum "$APK" | tee apk_sha256.txt
           echo "commit $GITHUB_SHA" >> apk_sha256.txt
           ./gradlew --no-daemon -q :app:dependencies --configuration debugRuntimeClasspath > dependencies.txt || true
@@ -76,6 +116,9 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: '3.11' }
       - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/download-artifact@v4
+        with: { name: native-jnilibs, path: master01/android/app/src/main/jniLibs }
+      - run: rm -f master01/android/app/src/main/jniLibs/SHA256SUMS.txt; find master01/android/app/src/main/jniLibs -type f | xargs ls -la
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

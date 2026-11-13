@@ -44,7 +44,9 @@ class EndToEndTest {
 
     @Test fun screensOpenWithoutCrash() {
         for (cls in listOf(MainActivity::class.java, ReferencesActivity::class.java, GenerateActivity::class.java,
-                ResultsActivity::class.java, SettingsActivity::class.java)) {
+                ResultsActivity::class.java, SettingsActivity::class.java,
+                ia.persona.app.ui.LocalGenerateActivity::class.java, ia.persona.app.ui.ModelActivity::class.java,
+                ia.persona.app.ui.HistoryActivity::class.java)) {
             val a = inst.startActivitySync(Intent(ctx, cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             inst.waitForIdleSync()
             a.finish()

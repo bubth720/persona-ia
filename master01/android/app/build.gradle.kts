@@ -10,8 +10,8 @@ android {
         applicationId = "ia.persona.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 100
-        versionName = "1.0.0-master01"
+        versionCode = 200
+        versionName = "2.0.0-master02"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
@@ -23,6 +23,9 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
     testOptions { unitTests.isIncludeAndroidResources = false }
+    // Le moteur natif (libsdcli.so, compilé par la CI depuis stable-diffusion.cpp épinglé) est un exécutable :
+    // il doit être extrait dans nativeLibraryDir pour pouvoir être lancé dans un processus séparé.
+    packaging { jniLibs { useLegacyPackaging = true } }
 }
 
 dependencies {
