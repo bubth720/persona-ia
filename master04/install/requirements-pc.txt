@@ -1,0 +1,6 @@
+# Atelier PERSONA (PC) — dépendances gratuites, versions figées
+Pillow==10.4.0
+psutil==6.0.0
+numpy==1.26.4
+mediapipe==0.10.14
+huggingface_hub==0.26.5

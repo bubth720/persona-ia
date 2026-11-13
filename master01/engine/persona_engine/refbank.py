@@ -165,7 +165,7 @@ class RefBank:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 tmp = dest.parent / f".tmp-{sha}{ext}"
                 shutil.copyfile(src, tmp)
-                with open(tmp, "rb") as f:
+                with open(tmp, "r+b") as f:      # écriture requise par fsync sous Windows
                     os.fsync(f.fileno())
                 if sha256_file(tmp) != sha:
                     tmp.unlink()

@@ -81,7 +81,7 @@ jobs:
           godot --headless --path . --export-release "Linux" build/linux/PERSONA_LIVE.x86_64 2>&1 | tee ../../export_linux.log
           for d in build/windows build/linux; do mkdir -p $d/characters; cp ../../dl/out/demo/persona_demo.glb ../../dl/out/demo/persona_demo.fbx ../../dl/out/demo/persona_demo.json $d/characters/; cp ../README_LIVE.md $d/ 2>/dev/null || true; done
           ls -laR build/windows build/linux; test -s build/windows/PERSONA_LIVE.exe
-          sha256sum build/windows/* build/linux/* | tee ../../live_sha256.txt
+          find build -type f -exec sha256sum {} ; | tee ../../live_sha256.txt
       - name: Exported Linux binary runs the selftest
         run: |
           set +e
@@ -201,3 +201,61 @@ jobs:
             selftest_integrated.log
             persona_live_integrated.png
             /tmp/chars/fictive-ci/model/
+
+  windows-package:
+    name: PC package (sd-cli.exe, Python tests on Windows, installer dry-run)
+    needs: live
+    runs-on: windows-latest
+    env:
+      SDCPP_COMMIT: e239e4b0fd3de49834cec67031a44796ca465abc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Python engine tests on Windows
+        run: |
+          pip install -q Pillow==10.4.0 psutil==6.0.0
+          cd master01/engine && python -m unittest -v tests.test_master01 tests.test_master04
+      - uses: actions/cache@v4
+        id: sdcache
+        with: { path: sdbin, key: "sdcli-win-avx2-${{ env.SDCPP_COMMIT }}-v1" }
+      - name: Build sd-cli.exe (CPU AVX2, pinned stable-diffusion.cpp)
+        if: steps.sdcache.outputs.cache-hit != 'true'
+        run: |
+          git clone -q https://github.com/leejet/stable-diffusion.cpp sdcpp
+          cd sdcpp && git checkout -q "$SDCPP_COMMIT"
+          git submodule update -q --init ggml thirdparty/libwebp thirdparty/libwebm examples/server/frontend
+          cmake -S . -B build -DSD_WEBP=OFF -DSD_WEBM=OFF -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON
+          cmake --build build --config Release --target sd-cli -j 4
+          mkdir -p ../sdbin && cp build/bin/Release/sd-cli.exe ../sdbin/ || cp build/bin/sd-cli.exe ../sdbin/
+      - run: sdbin/sd-cli.exe --help | head -3
+      - uses: actions/download-artifact@v4
+        with: { name: PERSONA_LIVE-windows, path: pkg/live }
+      - name: Assemble PERSONA_PC package
+        run: |
+          mkdir -p pkg/engine/bin pkg/pipeline/blender pkg/install
+          cp -r master01/engine/persona_engine pkg/engine/
+          find pkg/engine -name __pycache__ -prune -exec rm -r {} +
+          cp master01/poco/fetch_models.py master04/install/requirements-pc.txt pkg/engine/
+          cp sdbin/sd-cli.exe pkg/engine/bin/
+          cp master04/pipeline/blender/make_character.py pkg/pipeline/blender/
+          cp master04/install/Installer-PERSONA.ps1 pkg/install/
+          cp master04/GUIDE_INSTALLATION.md pkg/ 2>/dev/null || true
+          (cd pkg && find . -type f -exec sha256sum {} \; > SHA256SUMS.txt)
+          ls -R pkg | head -60
+      - name: Installer dry-run (hardware detection on this Windows machine)
+        shell: pwsh
+        run: |
+          powershell -ExecutionPolicy Bypass -File pkg\install\Installer-PERSONA.ps1 -DryRun
+          Get-Content "$env:APPDATA\PERSONA\hardware_report.json"
+      - name: Atelier worker starts on Windows (test backend) and serves the UI
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "$PWD\pkg\engine"
+          $p = Start-Process python -ArgumentList "-m","persona_engine.worker","--backend","test_pattern","--port","8765","--token","wintest","--root","$env:TEMP\w" -PassThru
+          Start-Sleep 4
+          (Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing).StatusCode
+          (Invoke-RestMethod http://127.0.0.1:8765/v1/hardware -Headers @{Authorization="Bearer wintest"}).profile
+          Stop-Process $p.Id
+      - uses: actions/upload-artifact@v4
+        with: { name: PERSONA_PC-windows-package, path: pkg/ }

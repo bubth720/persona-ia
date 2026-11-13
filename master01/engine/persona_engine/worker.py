@@ -305,6 +305,14 @@ class JobManager:
         self._build_board(jid)
         return self.manifest(jid)
 
+    def list_jobs(self) -> list[dict]:
+        out = []
+        for p in self.jobs_dir.glob("*/job.json"):
+            j = read_json(p)
+            if j:
+                out.append({k: j.get(k) for k in ("id", "kind", "state", "created_at", "seed", "profile")})
+        return sorted(out, key=lambda j: j["created_at"] or "", reverse=True)
+
     def delete(self, jid: str) -> None:
         self.cancel(jid)
         shutil.rmtree(self._jdir(jid))
@@ -354,16 +362,31 @@ def make_handler(mgr: JobManager, token: str):
             return self.rfile.read(n) if n else b""
 
         def _route(self, method: str):
+            parts = [p for p in self.path.split("?")[0].split("/") if p]
+            if method == "GET" and parts in ([], ["ui"]):
+                # Page de l'atelier : statique, sans données ; l'API reste protégée par le jeton.
+                body = (Path(__file__).parent / "ui" / "index.html").read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline' blob: data:")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             if not self._auth():
                 return
-            parts = [p for p in self.path.split("?")[0].split("/") if p]
             try:
                 if parts == ["v1", "health"]:
                     return self._json(200, {"ok": True, "backend": mgr.backend.describe()})
+                if parts == ["v1", "hardware"]:
+                    from .hardware import detect
+                    return self._json(200, detect())
                 if parts[:2] != ["v1", "jobs"]:
                     return self._json(404, {"error": "inconnu"})
                 if method == "POST" and len(parts) == 2:
                     return self._json(201, mgr.create(json.loads(self._body() or b"{}")))
+                if method == "GET" and len(parts) == 2:
+                    return self._json(200, {"jobs": mgr.list_jobs()})
                 jid = parts[2]
                 rest = parts[3:]
                 if method == "GET" and not rest:
@@ -449,10 +472,16 @@ def main(argv=None) -> None:
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--token-file", default="worker_token.txt")
     ap.add_argument("--token", default=None, help="jeton imposé (tests CI); sinon aléatoire")
+    ap.add_argument("--open-ui", action="store_true", help="ouvrir l'atelier dans le navigateur")
     a = ap.parse_args(argv)
-    httpd, mgr, _ = serve(Path(a.root), a.backend, a.host, a.port, a.token, Path(a.token_file))
+    httpd, mgr, token = serve(Path(a.root), a.backend, a.host, a.port, a.token, Path(a.token_file))
     print(f"PERSONA engine on {a.host}:{httpd.server_address[1]} backend={a.backend} token-file={a.token_file}",
           flush=True)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/#token={token}"
+    print(f"Atelier : {url}", flush=True)
+    if a.open_ui:
+        import webbrowser
+        webbrowser.open(url)
     try:
         httpd.serve_forever()
     finally:

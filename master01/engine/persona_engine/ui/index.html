@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PERSONA Atelier</title>
+<style>
+:root{--bg:#f6f5f2;--fg:#1c1c1c;--muted:#666;--card:#fff;--line:#ddd;--acc:#2a5db0;--ok:#1d7a3a;--bad:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#161616;--fg:#eee;--muted:#aaa;--card:#222;--line:#333;--acc:#7aa7ff;--ok:#5cc27d;--bad:#ff7b72}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+h1{font-size:20px;margin:0}main{padding:16px 20px;display:grid;gap:16px;grid-template-columns:minmax(280px,360px) 1fr}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+label{display:block;margin:8px 0 4px;color:var(--muted);font-size:13px}input,select,button{font:inherit}
+input[type=text],input[type=number],select{width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+button{padding:7px 12px;border-radius:6px;border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--acc)}button:disabled{opacity:.5;cursor:default}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.view img,.refs img{width:100%;border-radius:6px;background:#0002;aspect-ratio:3/4;object-fit:cover}
+.refs{display:flex;gap:6px;flex-wrap:wrap}.refs img{width:72px;height:96px;cursor:pointer;border:2px solid transparent}.refs img.sel{border-color:var(--acc)}
+.tag{font-size:12px;color:var(--muted)}.warn{color:var(--bad)}.okc{color:var(--ok)}
+.cmp{position:relative;max-width:520px;aspect-ratio:3/4;overflow:hidden;border-radius:8px;background:#0003}
+.cmp img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.cmp .top{clip-path:inset(0 50% 0 0)}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+</style>
+</head>
+<body>
+<header><h1>PERSONA — Atelier photographique</h1><span id="engine" class="tag">connexion…</span><span id="hw" class="tag"></span></header>
+<main>
+<section>
+  <h2 style="font-size:16px;margin:0 0 6px">1. Références autorisées</h2>
+  <label><input type="checkbox" id="consent"> La personne adulte représentée a autorisé l'usage de ses photos et de sa ressemblance. Les photos restent sur cet ordinateur.</label>
+  <label for="files">Photos (plusieurs)</label><input type="file" id="files" multiple accept="image/jpeg,image/png,image/webp">
+  <div class="refs" id="refs"></div>
+  <h2 style="font-size:16px;margin:14px 0 6px">2. Génération</h2>
+  <label>Planche</label><select id="kind"><option value="face">Visage : face, profils, trois-quarts, expression</option><option value="body">Corps : face, profil, trois-quarts, dos</option></select>
+  <label>Sujet</label><select id="subject"><option value="woman">femme</option><option value="man">homme</option></select>
+  <label>Tenue / coiffure (anglais conseillé)</label><input type="text" id="appearance" value="plain grey t-shirt, dark jeans">
+  <label>Graine (vide = aléatoire)</label><input type="number" id="seed">
+  <div class="row"><button id="go">Générer</button><button class="ghost" id="cancel" disabled>Annuler</button></div>
+  <p id="msg" class="tag"></p>
+  <h2 style="font-size:16px;margin:14px 0 6px">Historique</h2><div id="jobs" class="tag"></div>
+</section>
+<section>
+  <h2 style="font-size:16px;margin:0 0 6px">3. Résultats <span id="jobstate" class="tag"></span></h2>
+  <div class="grid" id="views"></div>
+  <h2 style="font-size:16px;margin:16px 0 6px">4. Comparer (référence ↔ génération)</h2>
+  <p class="tag">Cliquez une référence à gauche puis « Comparer » sous une vue. Faites glisser pour superposer. Jugement humain uniquement : aucun score automatique de ressemblance.</p>
+  <div class="cmp" id="cmp"><img id="cmpB" alt=""><img id="cmpA" class="top" alt=""></div>
+  <input type="range" id="slider" min="0" max="100" value="50" style="width:100%;max-width:520px">
+  <h2 style="font-size:16px;margin:16px 0 6px">5. Export</h2>
+  <div class="row"><button class="ghost" id="exBoard" disabled>Planche PNG</button><button class="ghost" id="exManifest" disabled>Métadonnées JSON</button><button class="ghost" id="exAll" disabled>Toutes les vues</button></div>
+</section>
+</main>
+<script>
+const token = new URLSearchParams(location.hash.slice(1)).get("token") || localStorage.getItem("persona_token") || "";
+try { if (token) localStorage.setItem("persona_token", token); } catch (e) {}
+const H = {Authorization: "Bearer " + token};
+const $ = id => document.getElementById(id);
+let refs = [], selRef = null, jobId = null, poller = null;
+
+async function api(method, path, body, extra) {
+  const r = await fetch(path, {method, headers: {...H, ...(extra || {})}, body});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({error: r.status}))).error);
+  return (r.headers.get("content-type") || "").includes("json") ? r.json() : r.blob();
+}
+async function sha256(buf) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map(b => b.toString(16).padStart(2, "0")).join(""); }
+function save(blob, name) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); }
+
+$("files").onchange = async () => {
+  refs = [];
+  $("refs").innerHTML = "";
+  for (const f of $("files").files) {
+    const buf = await f.arrayBuffer();
+    const r = {name: f.name, buf, sha: await sha256(buf), url: URL.createObjectURL(f)};
+    refs.push(r);
+    const img = document.createElement("img"); img.src = r.url; img.title = f.name;
+    img.onclick = () => { selRef = r; document.querySelectorAll(".refs img").forEach(i => i.classList.remove("sel")); img.classList.add("sel"); $("cmpA").src = r.url; };
+    $("refs").appendChild(img);
+  }
+  $("msg").textContent = refs.length + " référence(s) prête(s) (empreintes calculées localement).";
+};
+
+$("go").onclick = async () => {
+  if (!$("consent").checked) { $("msg").innerHTML = '<span class="warn">Cochez l\'autorisation d\'abord.</span>'; return; }
+  if (!refs.length) { $("msg").textContent = "Ajoutez au moins une référence."; return; }
+  try {
+    $("go").disabled = true;
+    const spec = {kind: $("kind").value, consent_declared: true, profile: "atelier",
+      params: {subject_class: $("subject").value, appearance: $("appearance").value}};
+    if ($("seed").value) spec.seed = +$("seed").value;
+    const job = await api("POST", "/v1/jobs", JSON.stringify(spec), {"Content-Type": "application/json"});
+    jobId = job.id;
+    for (const r of refs) await api("PUT", `/v1/jobs/${jobId}/references/${r.sha}`, r.buf, {"X-Consent": "granted"});
+    await api("POST", `/v1/jobs/${jobId}/start`);
+    $("cancel").disabled = false;
+    poll();
+  } catch (e) { $("msg").innerHTML = '<span class="warn">' + e.message + '</span>'; $("go").disabled = false; }
+};
+$("cancel").onclick = () => jobId && api("POST", `/v1/jobs/${jobId}/cancel`).then(poll);
+
+const shown = {};
+async function poll() {
+  clearTimeout(poller);
+  if (!jobId) return;
+  const j = await api("GET", `/v1/jobs/${jobId}`);
+  $("jobstate").textContent = `— ${j.state} · graine ${j.seed} · ${j.backend.name}` + (j.backend.is_generation ? "" : " (MOTEUR DE TEST, pas une génération)");
+  const last = j.events[j.events.length - 1];
+  if (last && last.detail) $("msg").textContent = last.detail;
+  $("views").innerHTML = "";
+  for (const [v, s] of Object.entries(j.views)) {
+    const d = document.createElement("div"); d.className = "view";
+    const p = s.provenance || {};
+    d.innerHTML = `<img alt="${v}"><div><b>${v}</b> <span class="tag">${s.state}${p.duration_s ? " · " + p.duration_s + " s" : ""} · graine ${s.seed}</span></div>`;
+    $("views").appendChild(d);
+    if (["done", "accepted", "rejected"].includes(s.state)) {
+      const key = jobId + v + (p.sha256 || "");
+      if (!shown[key]) shown[key] = URL.createObjectURL(await api("GET", `/v1/jobs/${jobId}/outputs/${v}`));
+      d.querySelector("img").src = shown[key];
+      const row = document.createElement("div"); row.className = "row";
+      for (const [label, fn] of [["Accepter", () => api("POST", `/v1/jobs/${jobId}/views/${v}/review`, JSON.stringify({accepted: true}))],
+                                  ["Rejeter", () => api("POST", `/v1/jobs/${jobId}/views/${v}/review`, JSON.stringify({accepted: false}))],
+                                  ["Régénérer", () => api("POST", `/v1/jobs/${jobId}/views/${v}/regenerate`, "{}")],
+                                  ["Comparer", async () => { $("cmpB").src = shown[key]; if (!selRef && refs[0]) $("cmpA").src = refs[0].url; }]]) {
+        const b = document.createElement("button"); b.className = "ghost"; b.textContent = label;
+        b.onclick = async () => { await fn(); if (label !== "Comparer") poll(); };
+        row.appendChild(b);
+      }
+      d.appendChild(row);
+      if (p.warnings && p.warnings.length) d.insertAdjacentHTML("beforeend", `<div class="tag warn">${p.warnings.join("<br>")}</div>`);
+    }
+  }
+  const finished = ["succeeded", "failed", "cancelled"].includes(j.state);
+  ["exBoard", "exManifest", "exAll"].forEach(id => $(id).disabled = !finished);
+  $("go").disabled = !finished; $("cancel").disabled = finished;
+  if (!finished) poller = setTimeout(poll, 3000);
+  listJobs();
+}
+$("slider").oninput = e => $("cmpA").style.clipPath = `inset(0 ${100 - e.target.value}% 0 0)`;
+$("exBoard").onclick = async () => save(await api("GET", `/v1/jobs/${jobId}/board.png`), `persona_${jobId.slice(0, 8)}_planche.png`);
+$("exManifest").onclick = async () => save(new Blob([JSON.stringify(await api("GET", `/v1/jobs/${jobId}/manifest`), null, 2)], {type: "application/json"}), `persona_${jobId.slice(0, 8)}_manifest.json`);
+$("exAll").onclick = async () => { const j = await api("GET", `/v1/jobs/${jobId}`);
+  for (const v of Object.keys(j.views)) try { save(await api("GET", `/v1/jobs/${jobId}/outputs/${v}`), `persona_${jobId.slice(0, 8)}_${v}.png`); } catch (e) {} };
+
+async function listJobs() {
+  const l = await api("GET", "/v1/jobs");
+  $("jobs").innerHTML = l.jobs.slice(0, 12).map(j => `<div><a href="#" data-id="${j.id}">${j.created_at.slice(0, 16)} · ${j.kind} · ${j.state}</a></div>`).join("") || "aucune";
+  $("jobs").querySelectorAll("a").forEach(a => a.onclick = e => { e.preventDefault(); jobId = a.dataset.id; poll(); });
+}
+(async () => {
+  try {
+    const h = await api("GET", "/v1/health");
+    $("engine").innerHTML = `Moteur : <b>${h.backend.name}</b> ` + (h.backend.is_generation ? '<span class="okc">génératif</span>' : '<span class="warn">TEST non génératif</span>');
+    const hw = await api("GET", "/v1/hardware");
+    $("hw").textContent = `Profil ${hw.profile} · RAM ${hw.ram_gb.total} Go · VRAM ${hw.gpu.vram_gb} Go`;
+    listJobs();
+  } catch (e) { $("engine").innerHTML = '<span class="warn">Moteur injoignable ou jeton absent : ouvrez l\'adresse affichée par le lanceur.</span>'; }
+})();
+</script>
+</body>
+</html>

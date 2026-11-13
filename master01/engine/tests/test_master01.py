@@ -334,6 +334,7 @@ open(out + ".args.json", "w").write(json.dumps(a))
 """
 
 
+@unittest.skipIf(sys.platform == "win32", "faux sd-cli en script shell (Unix)")
 class SdCppBackendTest(unittest.TestCase):
     def setUp(self):
         self.d = Path(tempfile.mkdtemp())

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -28,7 +29,17 @@ from .refbank import RefBank
 from .util import now_iso, atomic_write_json, sha256_file
 
 SCHEMA = "persona-character/1"
-BLENDER_SCRIPT = Path(__file__).resolve().parents[3] / "master04" / "pipeline" / "blender" / "make_character.py"
+def _blender_script() -> Path:
+    here = Path(__file__).resolve()
+    for c in (os.environ.get("PERSONA_BLENDER_SCRIPT", ""),
+              here.parents[3] / "master04" / "pipeline" / "blender" / "make_character.py",   # dépôt
+              here.parents[2] / "pipeline" / "blender" / "make_character.py"):              # paquet PERSONA_PC
+        if c and Path(c).is_file():
+            return Path(c)
+    return Path("make_character.py")
+
+
+BLENDER_SCRIPT = _blender_script()
 
 
 def slug(name: str) -> str:
