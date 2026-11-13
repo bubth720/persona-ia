@@ -1,5 +1,7 @@
 # MASTER 01 — tableau de bord final
 
+> **Suite : MASTER-02** (`master02/RESULTS.md`, CANDIDATE-V1 avec réserve : moteur intégré à l'APK, génération réelle prouvée sur Linux, test POCO à faire) et **MASTER-03** (`master03/README.md`, préparation seulement : pas de PC).
+
 Date : 2026-11-12 · Branche `ccr-8f135e00-hwmdvs` (partie de `docs/persona-roadmap-m2-m4@6146570`) · `main` intacte · PERSONA-3D intact.
 
 ## Verdict global
