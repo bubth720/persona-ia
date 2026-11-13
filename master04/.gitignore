@@ -1,0 +1,5 @@
+live/.godot/
+live/build/
+live/characters/demo/*.glb
+live/characters/demo/*.import
+*.blend1

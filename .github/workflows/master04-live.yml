@@ -1,0 +1,125 @@
+name: MASTER04 - PERSONA LIVE (Blender character, Godot build, Windows)
+on:
+  workflow_dispatch:
+  push:
+    branches: [master04/persona-live]
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+env:
+  GODOT_VERSION: "4.3"
+  BLENDER_URL: https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz
+jobs:
+  character:
+    name: Phase 3 - demo character (Blender headless)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Blender 4.2 LTS (portable)
+        run: |
+          curl -sSL "$BLENDER_URL" -o blender.tar.xz
+          sha256sum blender.tar.xz | tee blender_sha256.txt
+          tar -xf blender.tar.xz && mv blender-4.2.3-linux-x64 blender
+          sudo apt-get update -qq && sudo apt-get install -y -qq libxi6 libxkbcommon0 libgl1 libsm6 > /dev/null
+          ./blender/blender --version | head -1
+      - name: Generate rigged demo character (GLB + FBX)
+        run: |
+          ./blender/blender -b --factory-startup --python master04/pipeline/blender/make_character.py -- \
+            --out out/demo --name persona_demo 2>&1 | tee blender_demo.log | grep -E "PERSONA_CHARACTER_OK|Error|Traceback" ; \
+            test -s out/demo/persona_demo.glb
+          ls -la out/demo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: persona-demo-character
+          path: |
+            out/demo/
+            blender_demo.log
+            blender_sha256.txt
+
+  live:
+    name: Phase 4 - PERSONA LIVE build + selftests
+    needs: character
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: persona-demo-character, path: dl }
+      - run: cp dl/out/demo/persona_demo.glb master04/live/characters/demo/ && ls -la master04/live/characters/demo
+      - name: Install Godot 4.3 + export templates
+        run: |
+          curl -sSL https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip -o g.zip
+          unzip -q g.zip && sudo install -m 755 Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
+          curl -sSL https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz -o t.tpz
+          mkdir -p ~/.local/share/godot/export_templates/4.3.stable && unzip -q t.tpz && cp templates/* ~/.local/share/godot/export_templates/4.3.stable/
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb mesa-utils libgl1-mesa-dri > /dev/null
+      - name: Import project (parse all scripts)
+        working-directory: master04/live
+        run: |
+          godot --headless --path . --import 2>&1 | tee ../../godot_import.log || true
+          if grep -E "SCRIPT ERROR|Parse Error|Failed to load script|ERROR: .*\.gd" ../../godot_import.log; then exit 1; fi
+      - name: Selftest headless (logic, physics, import)
+        working-directory: master04/live
+        run: |
+          set +e
+          timeout 300 godot --headless --path . -- --selftest --report=$PWD/../../selftest_headless.json 2>&1 | tee ../../selftest_headless.log
+          code=${PIPESTATUS[0]}; echo "exit=$code"; cat ../../selftest_headless.json; exit $code
+      - name: Selftest with real rendering (xvfb + OpenGL) and screenshot
+        working-directory: master04/live
+        run: |
+          set +e
+          timeout 300 xvfb-run -a -s "-screen 0 1280x720x24" godot --path . --rendering-driver opengl3 -- --selftest \
+            --report=$PWD/../../selftest_render.json --screenshot=$PWD/../../persona_live_screenshot.png 2>&1 | tee ../../selftest_render.log
+          code=${PIPESTATUS[0]}; echo "exit=$code"; cat ../../selftest_render.json; exit $code
+      - name: Export Windows + Linux executables
+        working-directory: master04/live
+        run: |
+          mkdir -p build/windows build/linux
+          godot --headless --path . --export-release "Windows Desktop" build/windows/PERSONA_LIVE.exe 2>&1 | tee ../../export_windows.log
+          godot --headless --path . --export-release "Linux" build/linux/PERSONA_LIVE.x86_64 2>&1 | tee ../../export_linux.log
+          ls -la build/windows build/linux; test -s build/windows/PERSONA_LIVE.exe
+          sha256sum build/windows/* build/linux/* | tee ../../live_sha256.txt
+      - name: Exported Linux binary runs the selftest
+        run: |
+          set +e
+          timeout 300 master04/live/build/linux/PERSONA_LIVE.x86_64 --headless -- --selftest --report=$PWD/selftest_export_linux.json > selftest_export_linux.log 2>&1
+          code=$?; cat selftest_export_linux.json; exit $code
+      - name: Screenshot preview in log
+        if: always()
+        run: python3 master01/poco/preview.py persona_live_screenshot.png || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PERSONA_LIVE-windows
+          path: master04/live/build/windows/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: persona-live-evidence
+          path: |
+            *.log
+            *.json
+            persona_live_screenshot.png
+            live_sha256.txt
+            master04/live/build/linux/
+
+  windows:
+    name: Windows executable selftest (windows-latest)
+    needs: live
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: PERSONA_LIVE-windows, path: app }
+      - name: Run PERSONA_LIVE.exe selftest (headless)
+        shell: pwsh
+        run: |
+          Get-ChildItem app | Format-Table Name, Length
+          $p = Start-Process -FilePath "app\PERSONA_LIVE.exe" -ArgumentList "--headless","--","--selftest","--report=$PWD\selftest_windows.json" -Wait -PassThru -NoNewWindow
+          Get-Content selftest_windows.json
+          "exit=$($p.ExitCode)"
+          (Get-CimInstance Win32_Processor).Name; [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,1)
+          if ($p.ExitCode -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: persona-live-windows-selftest, path: selftest_windows.json }
