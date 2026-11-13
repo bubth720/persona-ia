@@ -34,6 +34,14 @@ from .contract import views_for, VIEW_STATES
 from .util import atomic_write_json, read_json, now_iso, sha256_bytes, sha256_file, dhash
 
 MAX_REF_BYTES = 40 * 2**20
+
+
+def _live_running() -> bool:
+    try:
+        from .hardware import live_running
+        return live_running()
+    except Exception:  # noqa: BLE001
+        return False
 MAX_REFS = 64
 
 
@@ -220,6 +228,12 @@ class JobManager:
         with self.lock:
             job = self.load(jid)
             if job["state"] != "queued":
+                return
+            if self.backend.is_generation and _live_running():
+                job["state"] = "failed"
+                job["events"].append({"at": now_iso(), "event": "refusé",
+                                      "detail": "PERSONA LIVE est ouvert : fermez-le avant un calcul IA lourd (exclusion mémoire)."})
+                self.save(job)
                 return
             job["state"] = "running"
             self.save(job)

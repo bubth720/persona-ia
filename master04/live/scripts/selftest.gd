@@ -106,7 +106,12 @@ func _run() -> void:
 	# Import d'un personnage personnalisé (GLB ou dossier PERSONA) au moment de l'exécution
 	var custom := _arg("character")
 	if custom == "":
-		# copie le GLB de démo hors du paquet pour prouver l'import depuis le disque
+		# 1) dossier characters/ livré à côté de l'exécutable (import depuis le disque, comme un utilisateur)
+		var beside := OS.get_executable_path().get_base_dir().path_join("characters/persona_demo.glb")
+		if FileAccess.file_exists(beside):
+			custom = beside
+	if custom == "":
+		# 2) projet lancé depuis l'éditeur : copie le GLB source hors du paquet
 		var src := "res://characters/demo/persona_demo.glb"
 		if FileAccess.file_exists(src):
 			custom = OS.get_user_data_dir().path_join("selftest_import.glb")

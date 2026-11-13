@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import os
 import platform
-import resource
+try:
+    import resource  # Unix
+except ImportError:  # Windows
+    resource = None
 import shutil
 import subprocess
 import tempfile
@@ -70,16 +73,35 @@ class SdCppBackend(Backend):
         return cmd
 
     def run(self, cmd: list[str], log_path: Path) -> tuple[float, float]:
-        before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+        """Exécute sd-cli ; mesure la RAM de pointe (getrusage sous Unix, psutil peak_wset sous Windows)."""
+        before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss if resource else 0
         t0 = time.time()
+        peak_mb = 0.0
         with open(log_path, "w") as log:
-            proc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, timeout=3 * 3600)
+            proc = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                import psutil  # optionnel
+                ps = psutil.Process(proc.pid)
+            except Exception:  # noqa: BLE001
+                ps = None
+            while proc.poll() is None:
+                if ps is not None:
+                    try:
+                        mi = ps.memory_info()
+                        peak_mb = max(peak_mb, getattr(mi, "peak_wset", mi.rss) / 2**20)
+                    except Exception:  # noqa: BLE001
+                        pass
+                time.sleep(0.5)
+                if time.time() - t0 > 3 * 3600:
+                    proc.kill()
+                    raise RuntimeError("sd-cli : délai dépassé (3 h)")
         dt = time.time() - t0
-        peak_kb = max(before, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
+        if resource:
+            peak_mb = max(peak_mb, max(before, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss) / 1024)
         if proc.returncode != 0:
             tail = Path(log_path).read_text(errors="replace")[-1500:]
             raise RuntimeError(f"sd-cli a échoué (code {proc.returncode}) : {tail}")
-        return dt, peak_kb / 1024
+        return dt, peak_mb
 
     def generate(self, *, kind, view, references, seed, params, out_path: Path,
                  use_photomaker: bool = True) -> GenerationResult:
