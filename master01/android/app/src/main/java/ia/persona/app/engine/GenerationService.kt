@@ -130,11 +130,11 @@ class GenerationService : Service() {
             }
             LocalJobs.update(LocalJobs.status.copy(stage = "téléchargement ${s.file}", bytes = 0, totalBytes = s.size))
             var last = 0L
-            store.download(s, { LocalJobs.cancelFlag }) { done, total ->
+            store.download(s, cancelled = { LocalJobs.cancelFlag }, onProgress = { done, total ->
                 if (done - last > 8 * ModelStore.MB || done == total) {
                     last = done; LocalJobs.update(LocalJobs.status.copy(bytes = done, totalBytes = total))
                 }
-            }
+            })
         }
         LocalJobs.update(LocalJobs.status.copy(running = false, stage = "fichiers téléchargés et vérifiés"))
     }

@@ -91,7 +91,11 @@ class LocalGenerateActivity : Activity() {
                 .put("profile", pr.id).put("style_strength", strengths[strength.selectedItemPosition])
                 .put("seed", seed.text.toString().toLongOrNull() ?: Random.nextLong(1, 2_147_483_647))
             val warn = memoryWarning()
-            val go = { if (!GenerationService.start(this, GenerationService.TASK_GENERATE, params)) stage.text = "Une tâche est déjà en cours." }
+            val go: () -> Unit = {
+                if (!GenerationService.start(this, GenerationService.TASK_GENERATE, params)) {
+                    stage.text = "Une tâche est déjà en cours."
+                }
+            }
             if (warn != null) AlertDialog.Builder(this).setTitle("Attention").setMessage(warn)
                 .setPositiveButton("Lancer quand même") { _, _ -> go() }.setNegativeButton("Annuler", null).show()
             else go()
